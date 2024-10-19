@@ -6,6 +6,7 @@ import (
 
 	"github.com/cronokirby/saferith"
 	"github.com/fxamacker/cbor/v2"
+	"github.com/mr-tron/base58"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 )
 
@@ -17,6 +18,10 @@ import (
 //
 // This ID is used as an interpolation point of a polynomial sharing of the secret key.
 type ID string
+
+func (id ID) String() string {
+	return base58.Encode([]byte(id))
+}
 
 // Scalar converts this ID into a scalar.
 //
