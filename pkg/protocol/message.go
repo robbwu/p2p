@@ -68,8 +68,8 @@ func (m *Message) Hash() []byte {
 // a MarshalBinary method
 type marshallableMessage struct {
 	SSID                  []byte
-	From                  party.ID
-	To                    party.ID
+	From                  []byte
+	To                    []byte
 	Protocol              string
 	RoundNumber           round.Number
 	Data                  []byte
@@ -80,8 +80,8 @@ type marshallableMessage struct {
 func (m *Message) toMarshallable() *marshallableMessage {
 	return &marshallableMessage{
 		SSID:                  m.SSID,
-		From:                  m.From,
-		To:                    m.To,
+		From:                  []byte(m.From),
+		To:                    []byte(m.To),
 		Protocol:              m.Protocol,
 		RoundNumber:           m.RoundNumber,
 		Data:                  m.Data,
@@ -97,11 +97,11 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 func (m *Message) UnmarshalBinary(data []byte) error {
 	deserialized := m.toMarshallable()
 	if err := cbor.Unmarshal(data, deserialized); err != nil {
-		return nil
+		return err
 	}
 	m.SSID = deserialized.SSID
-	m.From = deserialized.From
-	m.To = deserialized.To
+	m.From = party.ID(deserialized.From)
+	m.To = party.ID(deserialized.To)
 	m.Protocol = deserialized.Protocol
 	m.RoundNumber = deserialized.RoundNumber
 	m.Data = deserialized.Data
