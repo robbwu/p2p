@@ -15,6 +15,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	//"github.com/quic-go/quic-go"
@@ -68,117 +69,14 @@ var keygenCmd = &cobra.Command{
 			libp2p.Identity(privKey),
 			utils.P2POptions(),
 		)
+		if err != nil {
+			panic(err)
+		}
 
 		log.Info().Msgf("My ID is %s", host.ID())
 		log.Info().Msgf("my address is %s", host.Addrs())
 
-		if err != nil {
-			panic(err)
-		}
-		kademliaDHT, err := dht.New(context.Background(), host, dht.Mode(dht.ModeServer))
-		if err = kademliaDHT.Bootstrap(context.Background()); err != nil {
-			panic(err)
-		}
-
-		for _, addr := range dht.DefaultBootstrapPeers {
-			peerinfo, _ := peer.AddrInfoFromP2pAddr(addr)
-			if err := host.Connect(context.Background(), *peerinfo); err != nil {
-				log.Debug().Err(err).Msg("Connection failed")
-			} else {
-				log.Info().Msgf("Connection established with bootstrap node: %v", *peerinfo)
-			}
-		}
-
-		routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
-		ns := fmt.Sprintf("multipartysig-test-%d", utils.ComputeSessionID())
-		log.Info().Msgf("Announcing ourselves with session ID %s...", ns)
-		dutil.Advertise(context.Background(), routingDiscovery, ns)
-
-		//pingService := ping.NewPingService(host)
-
-		var parties []party.ID
-		myPartyId, err := utils.PeerIDToPartyID(host.ID())
-		if err != nil {
-			panic(err)
-		}
-		parties = append(parties, myPartyId)
-
-		var connectedPeers []peer.ID
-		for range time.NewTicker(5 * time.Second).C {
-			if len(parties) == N {
-				break
-			}
-			log.Info().Msg("Searching for other peers...")
-			peerChan, err := routingDiscovery.FindPeers(context.Background(), ns)
-
-			if err != nil {
-				panic(err)
-			}
-			for peer := range peerChan {
-				if peer.ID == host.ID() {
-					log.Debug().Msg("Found self")
-					continue
-				}
-				if slices.Contains(connectedPeers, peer.ID) {
-					log.Debug().Msg("Already connected")
-					continue
-				}
-				log.Info().Msgf("Found peer: %s! Connecting...", peer.ID)
-				if err = host.Connect(context.Background(), peer); err != nil {
-					log.Error().Err(err).Msg("Connecting peer failed")
-					continue
-				}
-				log.Info().Msgf("OK: Connected to peer: %s!", peer.ID)
-				conns := host.Network().ConnsToPeer(peer.ID)
-				for _, conn := range conns {
-					//spew.Dump("local multiaddr", conn.LocalMultiaddr())
-					//spew.Dump("remote multiaddr", conn.RemoteMultiaddr())
-					log.Info().Msgf("connection security %v", conn.ConnState())
-				}
-
-				partyId, err := utils.PeerIDToPartyID(peer.ID)
-				if err != nil {
-					panic(err)
-				}
-				parties = append(parties, partyId)
-				connectedPeers = append(connectedPeers, peer.ID)
-			}
-		}
-
-		log.Info().Msgf("Parties connected; total: %d", len(parties))
-		log.Info().Msgf("myPartyID: %s", myPartyId)
-		log.Info().Msgf("parties: %s", parties)
-
-		comm := myp2p.NewComm(myPartyId, parties, host)
-
-		// wait until all peers have registered the protocolID
-		log.Info().Msgf("Waiting for all peers to register protocolID %s...", commpkg.ProtocolID)
-		var wg sync.WaitGroup
-		for _, party := range parties {
-			if party == myPartyId {
-				continue
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for {
-					pid, err := utils.PartyIDToPeerID(party)
-					if err != nil {
-						panic(err)
-					}
-					stream, err := host.NewStream(context.Background(), pid, commpkg.ProtocolID)
-					if err != nil {
-						log.Warn().Err(err).Msg("failed to create stream; retrying...")
-					} else {
-						stream.Close()
-						return
-					}
-					time.Sleep(3 * time.Second)
-				}
-			}()
-		}
-		wg.Wait()
-		log.Info().Msg("All peers have registered protocolID")
+		comm, connectedPeers, parties := MustConnectWithEnoughPeers(host, N)
 		go func() {
 			for _, peer := range connectedPeers {
 				go func() {
@@ -191,6 +89,10 @@ var keygenCmd = &cobra.Command{
 			}
 		}()
 
+		myPartyId, err := utils.PeerIDToPartyID(host.ID())
+		if err != nil {
+			panic(err)
+		}
 		partiesSlice := party.NewIDSlice(parties)
 		h, err := protocol.NewMultiHandler(cmp.Keygen(curve.Secp256k1{}, myPartyId, partiesSlice, threshold, pl), nil)
 		if err != nil {
@@ -233,6 +135,115 @@ var keygenCmd = &cobra.Command{
 		os.WriteFile(configPath, bz, 0600)
 		log.Info().Msgf("Config saved to %s", configPath)
 	},
+}
+
+// this is blocking until the specific amount of peers are found
+func MustConnectWithEnoughPeers(host host.Host, numPeers int) (*commpkg.Comm, []peer.ID, party.IDSlice) {
+	kademliaDHT, err := dht.New(context.Background(), host, dht.Mode(dht.ModeServer))
+	if err = kademliaDHT.Bootstrap(context.Background()); err != nil {
+		panic(err)
+	}
+
+	for _, addr := range dht.DefaultBootstrapPeers {
+		peerinfo, _ := peer.AddrInfoFromP2pAddr(addr)
+		if err := host.Connect(context.Background(), *peerinfo); err != nil {
+			log.Debug().Err(err).Msg("Connection failed")
+		} else {
+			log.Debug().Msgf("Connection established with bootstrap node: %v", *peerinfo)
+		}
+	}
+
+	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
+	ns := fmt.Sprintf("multipartysig-test-%d", utils.ComputeSessionID())
+	log.Info().Msgf("Announcing ourselves with session ID %s...", ns)
+	dutil.Advertise(context.Background(), routingDiscovery, ns)
+
+	//pingService := ping.NewPingService(host)
+
+	var parties []party.ID
+	myPartyId, err := utils.PeerIDToPartyID(host.ID())
+	if err != nil {
+		panic(err)
+	}
+	parties = append(parties, myPartyId)
+
+	var connectedPeers []peer.ID
+	for range time.NewTicker(5 * time.Second).C {
+		if len(parties) == numPeers {
+			break
+		}
+		log.Info().Msg("Searching for other peers...")
+		peerChan, err := routingDiscovery.FindPeers(context.Background(), ns)
+
+		if err != nil {
+			panic(err)
+		}
+		for peer := range peerChan {
+			if peer.ID == host.ID() {
+				log.Debug().Msg("Found self")
+				continue
+			}
+			if slices.Contains(connectedPeers, peer.ID) {
+				log.Debug().Msg("Already connected")
+				continue
+			}
+			log.Info().Msgf("Found peer: %s! Connecting...", peer.ID)
+			if err = host.Connect(context.Background(), peer); err != nil {
+				log.Error().Err(err).Msg("Connecting peer failed")
+				continue
+			}
+			log.Info().Msgf("OK: Connected to peer: %s!", peer.ID)
+			conns := host.Network().ConnsToPeer(peer.ID)
+			for _, conn := range conns {
+				//spew.Dump("local multiaddr", conn.LocalMultiaddr())
+				//spew.Dump("remote multiaddr", conn.RemoteMultiaddr())
+				log.Info().Msgf("connection security %v", conn.ConnState())
+			}
+
+			partyId, err := utils.PeerIDToPartyID(peer.ID)
+			if err != nil {
+				panic(err)
+			}
+			parties = append(parties, partyId)
+			connectedPeers = append(connectedPeers, peer.ID)
+		}
+	}
+
+	log.Info().Msgf("Parties connected; total: %d", len(parties))
+	log.Info().Msgf("myPartyID: %s", myPartyId)
+	log.Info().Msgf("parties: %s", parties)
+
+	comm := myp2p.NewComm(myPartyId, parties, host)
+
+	// wait until all peers have registered the protocolID
+	log.Info().Msgf("Waiting for all peers to register protocolID %s...", commpkg.ProtocolID)
+	var wg sync.WaitGroup
+	for _, party := range parties {
+		if party == myPartyId {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				pid, err := utils.PartyIDToPeerID(party)
+				if err != nil {
+					panic(err)
+				}
+				stream, err := host.NewStream(context.Background(), pid, commpkg.ProtocolID)
+				if err != nil {
+					log.Warn().Err(err).Msg("failed to create stream; retrying...")
+				} else {
+					stream.Close()
+					return
+				}
+				time.Sleep(3 * time.Second)
+			}
+		}()
+	}
+	wg.Wait()
+	log.Info().Msg("All peers have registered protocolID")
+	return comm, connectedPeers, parties
 }
 
 func PointToPubkeyUncompressed65B(p curve.Point) []byte {

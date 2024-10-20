@@ -71,6 +71,7 @@ var keysignCmd = &cobra.Command{
 
 		log.Info().Msgf("My ID is %s", host.ID())
 		_ = pl
+
 	},
 }
 

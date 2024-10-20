@@ -69,7 +69,7 @@ func ComputeSessionID() int64 {
 	return sessionID
 }
 
-// party.ID is a string but really is 32Bytes binary []byte("string")
+// PeerIDToPartyID party.ID is a string but really is 32Bytes binary []byte("string")
 // NOTE: only for ed25519 public keys derived peer ID
 func PeerIDToPartyID(pids peer.ID) (party.ID, error) {
 	pk, err := pids.ExtractPublicKey()
@@ -83,7 +83,7 @@ func PeerIDToPartyID(pids peer.ID) (party.ID, error) {
 	return party.ID(bz), nil
 }
 
-// NOTE: only for ed25519 public keys derived peer ID
+// PartyIDToPeerID NOTE: only for ed25519 public keys derived peer ID
 func PartyIDToPeerID(pid party.ID) (peer.ID, error) {
 	bz := []byte(pid)
 
