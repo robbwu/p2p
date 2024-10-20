@@ -1,4 +1,4 @@
-package main
+package comm
 
 import (
 	"context"
@@ -9,11 +9,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/rs/zerolog/log"
+	"github.com/taurusgroup/multi-party-sig/p2p/utils"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/protocol"
 )
 
-const protocolID = "/multipartysig/1.0.0"
+const ProtocolID = "/multipartysig/1.0.0"
 
 // Comm the p2p communicator for passing messages between the parties
 type Comm struct {
@@ -37,7 +38,7 @@ func NewComm(myPartyId party.ID, parties party.IDSlice, host host.Host) *Comm {
 		p2pHost:   host,
 		inMsg:     make(chan *protocol.Message, 10*N),
 	}
-	host.SetStreamHandler(protocolID, comm.commStreamHandler)
+	host.SetStreamHandler(ProtocolID, comm.commStreamHandler)
 	return comm
 }
 
@@ -59,8 +60,8 @@ func (comm *Comm) Send(msg *protocol.Message) {
 			if !msg.IsFor(party) {
 				return
 			}
-			pid, err := PartyIDToPeerID(party)
-			stream, err := comm.p2pHost.NewStream(context.Background(), pid, protocolID)
+			pid, err := utils.PartyIDToPeerID(party)
+			stream, err := comm.p2pHost.NewStream(context.Background(), pid, ProtocolID)
 			if err != nil {
 				log.Error().Msgf("failed to open stream to %s: %v", msg.To, err)
 				spew.Dump(msg)

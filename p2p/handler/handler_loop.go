@@ -1,13 +1,14 @@
-package main
+package handler
 
 import (
 	"github.com/rs/zerolog/log"
+	"github.com/taurusgroup/multi-party-sig/p2p/comm"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/protocol"
 )
 
 // HandlerLoop blocks until the handler has finished. The result of the execution is given by Handler.Result().
-func HandlerLoop(myid party.ID, h protocol.Handler, comm *Comm) {
+func HandlerLoop(myid party.ID, h protocol.Handler, comm *comm.Comm) {
 	log.Debug().Msgf("HanderLoop started")
 	for {
 		select {
