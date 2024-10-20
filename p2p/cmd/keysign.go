@@ -5,11 +5,13 @@ package cmd
 
 import (
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/taurusgroup/multi-party-sig/p2p/handler"
@@ -80,7 +82,20 @@ var keysignCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		comm, _, parties := MustConnectWithEnoughPeers(host, config.Threshold+1)
+		var peers []peer.ID
+		for _, party := range config.PartyIDs() {
+			pid, err := utils.PartyIDToPeerID(party)
+			if err != nil {
+				panic(err)
+			}
+			peers = append(peers, pid)
+		}
+		if token == "" {
+			log.Error().Msgf("Session token not provided")
+			return
+		}
+		ns := fmt.Sprintf("%s-%d", token, utils.ComputeSessionID())
+		comm, _, parties := MustConnectWithEnoughPeers(host, config.Threshold+1, peers, ns)
 
 		partiesSlice := party.NewIDSlice(parties)
 		h, err := protocol.NewMultiHandler(cmp.Sign(config, partiesSlice, msghash, pl), nil)
@@ -105,6 +120,8 @@ var keysignCmd = &cobra.Command{
 			panic(err)
 		}
 		log.Info().Msgf("Signature(Ethereum)(%d): %x", len(sig), sig)
+		ethAddr := UncompressedToEthAddr(PointToPubkeyUncompressed65B(config.PublicPoint()))
+		log.Info().Msgf("Ethereum address 0x%x", ethAddr)
 	},
 }
 

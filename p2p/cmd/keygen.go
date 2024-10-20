@@ -76,7 +76,12 @@ var keygenCmd = &cobra.Command{
 		log.Info().Msgf("My ID is %s", host.ID())
 		log.Info().Msgf("my address is %s", host.Addrs())
 
-		comm, connectedPeers, parties := MustConnectWithEnoughPeers(host, N)
+		if token == "" {
+			log.Error().Msgf("Session token not provided")
+			return
+		}
+		ns := fmt.Sprintf("%s-%d", token, utils.ComputeSessionID())
+		comm, connectedPeers, parties := MustConnectWithEnoughPeers(host, N, nil, ns)
 		go func() {
 			for _, peer := range connectedPeers {
 				go func() {
@@ -138,7 +143,10 @@ var keygenCmd = &cobra.Command{
 }
 
 // this is blocking until the specific amount of peers are found
-func MustConnectWithEnoughPeers(host host.Host, numPeers int) (*commpkg.Comm, []peer.ID, party.IDSlice) {
+func MustConnectWithEnoughPeers(host host.Host, numPeers int, whitelist []peer.ID, ns string) (*commpkg.Comm, []peer.ID, party.IDSlice) {
+	if len(whitelist) > 0 && len(whitelist) < numPeers {
+		panic("whitelist must be empty or at least the same size as numPeers")
+	}
 	kademliaDHT, err := dht.New(context.Background(), host, dht.Mode(dht.ModeServer))
 	if err = kademliaDHT.Bootstrap(context.Background()); err != nil {
 		panic(err)
@@ -154,7 +162,6 @@ func MustConnectWithEnoughPeers(host host.Host, numPeers int) (*commpkg.Comm, []
 	}
 
 	routingDiscovery := drouting.NewRoutingDiscovery(kademliaDHT)
-	ns := fmt.Sprintf("multipartysig-test-%d", utils.ComputeSessionID())
 	log.Info().Msgf("Announcing ourselves with session ID %s...", ns)
 	dutil.Advertise(context.Background(), routingDiscovery, ns)
 
@@ -185,6 +192,10 @@ func MustConnectWithEnoughPeers(host host.Host, numPeers int) (*commpkg.Comm, []
 			}
 			if slices.Contains(connectedPeers, peer.ID) {
 				log.Debug().Msg("Already connected")
+				continue
+			}
+			if len(whitelist) > 0 && !slices.Contains(whitelist, peer.ID) {
+				log.Warn().Msgf("Peer %s not in whitelist; do not connecte!", peer.ID)
 				continue
 			}
 			log.Info().Msgf("Found peer: %s! Connecting...", peer.ID)
