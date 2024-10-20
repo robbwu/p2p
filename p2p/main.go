@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/rs/zerolog"
@@ -26,6 +30,7 @@ import (
 	"github.com/taurusgroup/multi-party-sig/pkg/ecdsa"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
+	"github.com/taurusgroup/multi-party-sig/pkg/pool"
 	"github.com/taurusgroup/multi-party-sig/pkg/protocol"
 	"github.com/taurusgroup/multi-party-sig/protocols/cmp"
 	"golang.org/x/crypto/sha3"
@@ -33,10 +38,11 @@ import (
 
 const keyFileName = "peer_id.key"
 
-func loadOrCreateIdentity() (crypto.PrivKey, error) {
-	if _, err := os.Stat(keyFileName); err == nil {
+func loadOrCreateIdentity(dir string) (crypto.PrivKey, error) {
+	keyPath := path.Join(dir, keyFileName)
+	if _, err := os.Stat(keyPath); err == nil {
 		// Key file exists, load it
-		data, err := ioutil.ReadFile(keyFileName)
+		data, err := ioutil.ReadFile(keyPath)
 		if err != nil {
 			return nil, err
 		}
@@ -61,9 +67,9 @@ func loadOrCreateIdentity() (crypto.PrivKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = ioutil.WriteFile(keyFileName, []byte(base64.StdEncoding.EncodeToString(keyBytes)), 0600)
+	err = os.WriteFile(keyPath, []byte(base64.StdEncoding.EncodeToString(keyBytes)), 0600)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to save peer ID to file: %w", err)
 	}
 	log.Info().Msg("Created new peer ID and saved to file")
 	return privKey, nil
@@ -80,12 +86,20 @@ func computeSessionID() int64 {
 }
 
 func main() {
+	N := flag.Int("n", 3, "keygen parties")
+	threshold := flag.Int("t", 1, "keygen threshold")
+	dir := flag.String("d", "", "directory to store peer ID")
+	flag.Parse()
+
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	privKey, err := loadOrCreateIdentity()
+	privKey, err := loadOrCreateIdentity(*dir)
 	if err != nil {
 		panic(err)
 	}
+
+	//pl := pool.NewPool(0)
+	pl := pool.NewPool(1)
 
 	limits := rcmgr.DefaultLimits
 	limits.StreamBaseLimit.Streams = 128
@@ -137,9 +151,10 @@ func main() {
 		panic(err)
 	}
 	parties = append(parties, myPartyId)
-	foundPeer := false
+
+	var connectedPeers []peer.ID
 	for range time.NewTicker(5 * time.Second).C {
-		if foundPeer {
+		if len(parties) == *N {
 			break
 		}
 		log.Info().Msg("Searching for other peers...")
@@ -150,6 +165,10 @@ func main() {
 		for peer := range peerChan {
 			if peer.ID == host.ID() {
 				log.Debug().Msg("Found self")
+				continue
+			}
+			if slices.Contains(connectedPeers, peer.ID) {
+				log.Debug().Msg("Already connected")
 				continue
 			}
 			log.Info().Msgf("Found peer: %s! Connecting...", peer.ID)
@@ -164,15 +183,13 @@ func main() {
 				spew.Dump("remote multiaddr", conn.RemoteMultiaddr())
 				log.Info().Msgf("connection security %v", conn.ConnState())
 			}
-			foundPeer = true
+
 			partyId, err := PeerIDToPartyID(peer.ID)
 			if err != nil {
 				panic(err)
 			}
 			parties = append(parties, partyId)
-			// attept to create a stream--note this can fail if the peer hasn't register a handler for
-			// the protocol
-
+			connectedPeers = append(connectedPeers, peer.ID)
 		}
 	}
 
@@ -209,10 +226,21 @@ func main() {
 		}()
 	}
 	wg.Wait()
+	log.Info().Msg("All peers have registered protocolID")
+	go func() {
+		for _, peer := range connectedPeers {
+			go func() {
+				for {
+					rtt := <-ping.Ping(context.Background(), host, peer)
+					log.Info().Msgf("RTT to %s: %s", peer, rtt)
+					time.Sleep(2 * time.Second)
+				}
+			}()
+		}
+	}()
 
-	threshold := 1
 	partiesSlice := party.NewIDSlice(parties)
-	h, err := protocol.NewMultiHandler(cmp.Keygen(curve.Secp256k1{}, myPartyId, partiesSlice, threshold, nil), nil)
+	h, err := protocol.NewMultiHandler(cmp.Keygen(curve.Secp256k1{}, myPartyId, partiesSlice, *threshold, pl), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -245,14 +273,21 @@ func main() {
 	log.Info().Msgf("Public: Ethereum address: %x", ethAddr)
 
 	{
+		removeParty := comm.parties[0]
+		comm.parties = comm.parties[1:]
+		if removeParty == myPartyId {
+			log.Info().Msgf("out of signers; skipping")
+			return
+		}
 		hash := sha3.NewLegacyKeccak256()
 		hash.Write([]byte("hello multisig"))
 		m := hash.Sum(nil)
-		h, err := protocol.NewMultiHandler(cmp.Sign(config, parties, m, nil), nil)
+		h, err := protocol.NewMultiHandler(cmp.Sign(config, comm.parties, m, pl), nil)
 		if err != nil {
 			panic(err)
 		}
 		s := time.Now()
+
 		HandlerLoop(myPartyId, h, comm)
 		log.Info().Msgf("Keysign takes %s", time.Since(s))
 		signResult, err := h.Result()
@@ -263,7 +298,7 @@ func main() {
 		if !signature.Verify(config.PublicPoint(), m) {
 			panic(err)
 		}
-		log.Info().Msg("Keysign success: Signature verified!")
+		log.Info().Msgf("Keysign success (%d/%d): Signature verified!", len(comm.parties), N)
 	}
 
 }

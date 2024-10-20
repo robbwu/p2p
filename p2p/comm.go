@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io"
+	"sort"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -28,12 +29,13 @@ type Comm struct {
 // PartyID == libp2p Host ID
 // streams are uni-directional only for sending messages
 func NewComm(myPartyId party.ID, parties party.IDSlice, host host.Host) *Comm {
+	sort.Sort(parties)
 	N := len(parties)
 	comm := &Comm{
 		myPartyId: myPartyId,
 		parties:   parties,
 		p2pHost:   host,
-		inMsg:     make(chan *protocol.Message, 2*N),
+		inMsg:     make(chan *protocol.Message, 10*N),
 	}
 	host.SetStreamHandler(protocolID, comm.commStreamHandler)
 	return comm
