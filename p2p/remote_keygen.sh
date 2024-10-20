@@ -10,6 +10,10 @@ GOOS=linux GOARCH=amd64 go build -o p2p-linux-amd64 .
 REMOTE_DIR="/tmp"
 BINARY_NAME="p2p"
 SESSION_NAME="local_remote_session"
+TOKEN="test0"
+PASSWORD="pw2409"
+N=3
+T=1
 
 
 
@@ -28,15 +32,15 @@ tmux split-window -v
 
 tmux select-pane -t 0
 tmux send-keys "echo Running $BINARY_NAME locally..." C-m
-tmux send-keys "./$BINARY_NAME " C-m
+tmux send-keys "./$BINARY_NAME keygen --n $N --t $T --password $PASSWORD --token $TOKEN --vault test0" C-m
 
 tmux select-pane -t 1
 tmux send-keys "echo Running $BINARY_NAME on remote server..." C-m
-tmux send-keys "ssh ex44 'cd $REMOTE_DIR && chmod +x $BINARY_NAME && ./$BINARY_NAME'" C-m
+tmux send-keys "ssh ex44 'cd $REMOTE_DIR && chmod +x $BINARY_NAME && ./$BINARY_NAME keygen --n $N --t $T --password $PASSWORD --token $TOKEN --vault test0'" C-m
 
 tmux select-pane -t 2
 tmux send-keys "echo Running $BINARY_NAME on remote server..." C-m
-tmux send-keys "ssh dell 'cd $REMOTE_DIR && chmod +x $BINARY_NAME && ./$BINARY_NAME'" C-m
+tmux send-keys "ssh dell 'cd $REMOTE_DIR && chmod +x $BINARY_NAME && ./$BINARY_NAME keygen --n $N --t $T --password $PASSWORD --token $TOKEN --vault test0'" C-m
 
 tmux select-pane -t 0
 tmux attach-session -t "$SESSION_NAME"
