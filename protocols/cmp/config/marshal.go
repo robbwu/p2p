@@ -24,7 +24,7 @@ func EmptyConfig(group curve.Curve) *Config {
 }
 
 type configMarshal struct {
-	ID             party.ID
+	ID             []byte
 	Threshold      int
 	ECDSA, ElGamal curve.Scalar
 	P, Q           *saferith.Nat
@@ -33,7 +33,7 @@ type configMarshal struct {
 }
 
 type publicMarshal struct {
-	ID             party.ID
+	ID             []byte
 	ECDSA, ElGamal curve.Point
 	N              *saferith.Modulus
 	S, T           *saferith.Nat
@@ -44,7 +44,7 @@ func (c *Config) MarshalBinary() ([]byte, error) {
 	for _, id := range c.PartyIDs() {
 		p := c.Public[id]
 		pm := &publicMarshal{
-			ID:      id,
+			ID:      []byte(id),
 			ECDSA:   p.ECDSA,
 			ElGamal: p.ElGamal,
 			N:       p.Pedersen.N(),
@@ -58,7 +58,7 @@ func (c *Config) MarshalBinary() ([]byte, error) {
 		ps = append(ps, data)
 	}
 	return cbor.Marshal(&configMarshal{
-		ID:        c.ID,
+		ID:        []byte(c.ID),
 		Threshold: c.Threshold,
 		ECDSA:     c.ECDSA,
 		ElGamal:   c.ElGamal,
@@ -106,13 +106,13 @@ func (c *Config) UnmarshalBinary(data []byte) error {
 		if err := cbor.Unmarshal(pm, p); err != nil {
 			return fmt.Errorf("config: party %s: %w", p.ID, err)
 		}
-		if _, ok := ps[p.ID]; ok {
+		if _, ok := ps[party.ID(p.ID)]; ok {
 			return fmt.Errorf("config: party %s: duplicate entry", p.ID)
 		}
 
 		// handle our own key separately
-		if p.ID == cm.ID {
-			ps[p.ID] = &Public{
+		if string(p.ID) == string(cm.ID) {
+			ps[party.ID(p.ID)] = &Public{
 				ECDSA:    cm.ECDSA.ActOnBase(),
 				ElGamal:  cm.ElGamal.ActOnBase(),
 				Paillier: paillierSecret.PublicKey,
@@ -132,7 +132,7 @@ func (c *Config) UnmarshalBinary(data []byte) error {
 		}
 
 		paillierPublic := paillier.NewPublicKey(p.N)
-		ps[p.ID] = &Public{
+		ps[party.ID(p.ID)] = &Public{
 			ECDSA:    p.ECDSA,
 			ElGamal:  p.ElGamal,
 			Paillier: paillierPublic,
@@ -147,13 +147,13 @@ func (c *Config) UnmarshalBinary(data []byte) error {
 	}
 
 	// check that we are included
-	if _, ok := ps[cm.ID]; !ok {
+	if _, ok := ps[party.ID(cm.ID)]; !ok {
 		return errors.New("config: no public data for this party")
 	}
 
 	*c = Config{
 		Group:     c.Group,
-		ID:        cm.ID,
+		ID:        party.ID(cm.ID),
 		Threshold: cm.Threshold,
 		ECDSA:     cm.ECDSA,
 		ElGamal:   cm.ElGamal,

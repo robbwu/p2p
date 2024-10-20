@@ -27,15 +27,15 @@ tmux split-window -v
 
 tmux select-pane -t 0
 tmux send-keys "echo instance 1" C-m
-tmux send-keys "./$BINARY_NAME keygen --vault 0  --n $N --t $T" C-m
+tmux send-keys "./$BINARY_NAME keygen --vault 0  --n $N --t $T --overwrite" C-m
 
 tmux select-pane -t 1
 tmux send-keys "echo instance 2" C-m
-tmux send-keys "./$BINARY_NAME keygen --vault 1 --n $N --t $T" C-m
+tmux send-keys "./$BINARY_NAME keygen --vault 1 --n $N --t $T --overwrite" C-m
 
 tmux select-pane -t 2
 tmux send-keys "echo instance 3" C-m
-tmux send-keys "./$BINARY_NAME keygen --vault 2 --n $N --t $T" C-m
+tmux send-keys "./$BINARY_NAME keygen --vault 2 --n $N --t $T --overwrite" C-m
 
 
 #tmux select-pane -t 3
