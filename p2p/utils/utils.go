@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"syscall"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -18,6 +19,8 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog/log"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
+
+	"golang.org/x/term"
 )
 
 const keyFileName = "peer_id.key"
@@ -119,4 +122,18 @@ func P2POptions() libp2p.Option {
 		libp2p.ResourceManager(rmgr),
 	)
 
+}
+
+func GetPassword(prompt string) (string, error) {
+	// Print the prompt
+	fmt.Print(prompt)
+
+	// Disable input echo for password entry
+	bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		return "", err
+	}
+	fmt.Println() // Print a new line after the user presses enter
+
+	return string(bytePassword), nil
 }

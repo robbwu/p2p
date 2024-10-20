@@ -19,6 +19,7 @@ N=4
 T=2
 msghash="2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 token="testsign"
+password="pw2409"
 
 tmux split-window -h
 tmux split-window -v
@@ -28,15 +29,15 @@ tmux split-window -v
 
 tmux select-pane -t 0
 tmux send-keys "echo instance 1" C-m
-tmux send-keys "./$BINARY_NAME keysign --vault 0 --msg-hash $msghash --token $token" C-m
+tmux send-keys "./$BINARY_NAME keysign --vault 0 --msg-hash $msghash --token $token --password $password" C-m
 
 tmux select-pane -t 1
 tmux send-keys "echo instance 2" C-m
-tmux send-keys "./$BINARY_NAME keysign --vault 1 --msg-hash $msghash --token $token" C-m
+tmux send-keys "./$BINARY_NAME keysign --vault 1 --msg-hash $msghash --token $token --password $password" C-m
 
 tmux select-pane -t 2
 tmux send-keys "echo instance 3" C-m
-tmux send-keys "./$BINARY_NAME keysign --vault 2 --msg-hash $msghash --token $token" C-m
+tmux send-keys "./$BINARY_NAME keysign --vault 2 --msg-hash $msghash --token $token --password $password" C-m
 
 
 #tmux select-pane -t 3

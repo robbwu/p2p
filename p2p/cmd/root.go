@@ -12,6 +12,7 @@ import (
 var cfgDir string
 var vault string
 var token string
+var password string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -41,6 +42,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgDir, "dir", "", "config directory (default is $HOME/.p2p)")
 	rootCmd.PersistentFlags().StringVar(&vault, "vault", "default", "vault name (default default)")
 	rootCmd.PersistentFlags().StringVar(&token, "token", "", "session token--make sure each party uses the same token; don't reuse the same token")
+	rootCmd.PersistentFlags().StringVar(&password, "password", "", "password for vault")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

@@ -18,6 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/taurusgroup/multi-party-sig/p2p/encryption"
+
 	//"github.com/quic-go/quic-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -45,6 +47,15 @@ var keygenCmd = &cobra.Command{
 	Short: "generate a ECDSA private key",
 	Long:  `ECDSA distributed keygen`,
 	Run: func(cmd *cobra.Command, args []string) {
+
+		if password == "" {
+			log.Info().Msgf("No password via CLI arguments; reading from stdin...")
+			pw, err := utils.GetPassword("Enter password: ")
+			if err != nil {
+				panic(err)
+			}
+			password = pw
+		}
 		fmt.Println("keygen called")
 		if cfgDir == "" {
 			homeDir, err := os.UserHomeDir()
@@ -119,24 +130,27 @@ var keygenCmd = &cobra.Command{
 		log.Info().Msgf("Keygen success!: parties(%d), threshold(%d)", len(config.PartyIDs()), config.Threshold)
 		log.Info().Msgf("Keygen takes %s", time.Since(s))
 
+		rawbz, err := config.MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		bz, err := encryption.Encrypt(rawbz, []byte(password))
+		if err != nil {
+			panic(err)
+		}
+
 		configPath := path.Join(vaultDir, "keygen_config.json")
 		if _, err := os.Stat(configPath); err == nil {
 			log.Warn().Msgf("Config file already exists; making a backup...")
 			err = os.Rename(configPath, fmt.Sprintf("%s.%d", configPath, time.Now().Unix()))
 			if err != nil {
 				log.Error().Err(err).Msg("failed to make backup; saving current keygen to a temporary file...")
-				bz, err := config.MarshalBinary()
-				if err != nil {
-					panic(err)
-				}
+
 				os.WriteFile(configPath+".tmp", bz, 0600)
 				return
 			}
 		}
-		bz, err := config.MarshalBinary()
-		if err != nil {
-			panic(err)
-		}
+
 		os.WriteFile(configPath, bz, 0600)
 		log.Info().Msgf("Config saved to %s", configPath)
 	},
@@ -199,11 +213,20 @@ func MustConnectWithEnoughPeers(host host.Host, numPeers int, whitelist []peer.I
 				continue
 			}
 			log.Info().Msgf("Found peer: %s! Connecting...", peer.ID)
-			if err = host.Connect(context.Background(), peer); err != nil {
-				log.Error().Err(err).Msg("Connecting peer failed")
+
+			cont := false
+			func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel() // Ensure the context is canceled to avoid resource leaks
+				if err = host.Connect(ctx, peer); err != nil {
+					log.Error().Err(err).Msg("Connecting peer failed")
+					cont = true
+				}
+				log.Info().Msgf("OK: Connected to peer: %s!", peer.ID)
+			}()
+			if cont {
 				continue
 			}
-			log.Info().Msgf("OK: Connected to peer: %s!", peer.ID)
 			conns := host.Network().ConnsToPeer(peer.ID)
 			for _, conn := range conns {
 				//spew.Dump("local multiaddr", conn.LocalMultiaddr())

@@ -9,6 +9,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/taurusgroup/multi-party-sig/p2p/encryption"
+	"github.com/taurusgroup/multi-party-sig/p2p/utils"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 	"github.com/taurusgroup/multi-party-sig/protocols/cmp"
 )
@@ -35,10 +37,23 @@ to quickly create a Cobra application.`,
 		log.Info().Msgf("describe %s", vaultDir)
 		configPath := path.Join(vaultDir, "keygen_config.json")
 		// read file
-		data, err := os.ReadFile(configPath)
+		rawdata, err := os.ReadFile(configPath)
 		if err != nil {
 			panic(err)
 		}
+		if password == "" {
+			log.Info().Msgf("No password via CLI arguments; reading from stdin...")
+			pw, err := utils.GetPassword("Enter password: ")
+			if err != nil {
+				panic(err)
+			}
+			password = pw
+		}
+		data, err := encryption.Decrypt(rawdata, []byte(password))
+		if err != nil {
+			panic(err)
+		}
+
 		log.Debug().Msgf("File size %d", len(data))
 		config := cmp.EmptyConfig(curve.Secp256k1{})
 		err = config.UnmarshalBinary(data)

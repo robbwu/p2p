@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/taurusgroup/multi-party-sig/p2p/encryption"
 	"github.com/taurusgroup/multi-party-sig/p2p/handler"
 	"github.com/taurusgroup/multi-party-sig/p2p/utils"
 	"github.com/taurusgroup/multi-party-sig/pkg/ecdsa"
@@ -52,11 +53,24 @@ var keysignCmd = &cobra.Command{
 		log.Info().Msgf("describe %s", vaultDir)
 		configPath := path.Join(vaultDir, "keygen_config.json")
 		// read file
-		data, err := os.ReadFile(configPath)
+		rawdata, err := os.ReadFile(configPath)
 		if err != nil {
 			panic(err)
 		}
-		log.Debug().Msgf("File size %d", len(data))
+		log.Debug().Msgf("File size %d", len(rawdata))
+		if password == "" {
+			log.Info().Msgf("No password via CLI arguments; reading from stdin...")
+			pw, err := utils.GetPassword("Enter password: ")
+			if err != nil {
+				panic(err)
+			}
+			password = pw
+		}
+		data, err := encryption.Decrypt(rawdata, []byte(password))
+		if err != nil {
+			panic(err)
+		}
+
 		config := cmp.EmptyConfig(curve.Secp256k1{})
 		err = config.UnmarshalBinary(data)
 		if err != nil {
