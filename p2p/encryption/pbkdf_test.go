@@ -21,7 +21,7 @@ func Test1(t *testing.T) {
 
 	t.Logf("size of cyphertext: %d", len(encrypted))
 
-	decrypted, err := decrypt(encrypted, password)
+	decrypted, err := Decrypt(encrypted, password)
 	if err != nil {
 		t.Fatal(err)
 	}
