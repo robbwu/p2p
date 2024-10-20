@@ -9,8 +9,13 @@ import (
 	"path"
 	"time"
 
+	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/rs/zerolog/log"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 )
@@ -91,4 +96,27 @@ func PartyIDToPeerID(pid party.ID) (peer.ID, error) {
 	}
 
 	return peer.IDFromPublicKey(pk)
+}
+
+func P2POptions() libp2p.Option {
+	limits := rcmgr.DefaultLimits
+	limits.StreamBaseLimit.Streams = 128
+	limits.StreamBaseLimit.StreamsInbound = 64
+	limits.StreamBaseLimit.StreamsOutbound = 64
+	limitConf := limits.AutoScale()
+	limiter := rcmgr.NewFixedLimiter(limitConf)
+	rmgr, err := rcmgr.NewResourceManager(limiter)
+	if err != nil {
+		panic(err)
+	}
+	return libp2p.ChainOptions(
+		libp2p.ListenAddrs(
+			multiaddr.StringCast("/ip4/0.0.0.0/tcp/0"),
+			multiaddr.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
+		),
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.Transport(quic.NewTransport),
+		libp2p.ResourceManager(rmgr),
+	)
+
 }
