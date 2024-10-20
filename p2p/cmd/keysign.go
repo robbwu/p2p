@@ -7,13 +7,18 @@ import (
 	"encoding/hex"
 	"os"
 	"path"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/taurusgroup/multi-party-sig/p2p/handler"
 	"github.com/taurusgroup/multi-party-sig/p2p/utils"
+	"github.com/taurusgroup/multi-party-sig/pkg/ecdsa"
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
+	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/pool"
+	"github.com/taurusgroup/multi-party-sig/pkg/protocol"
 	"github.com/taurusgroup/multi-party-sig/protocols/cmp"
 )
 
@@ -70,8 +75,36 @@ var keysignCmd = &cobra.Command{
 		)
 
 		log.Info().Msgf("My ID is %s", host.ID())
-		_ = pl
 
+		myPartyId, err := utils.PeerIDToPartyID(host.ID())
+		if err != nil {
+			panic(err)
+		}
+		comm, _, parties := MustConnectWithEnoughPeers(host, config.Threshold+1)
+
+		partiesSlice := party.NewIDSlice(parties)
+		h, err := protocol.NewMultiHandler(cmp.Sign(config, partiesSlice, msghash, pl), nil)
+		if err != nil {
+			panic(err)
+		}
+		s := time.Now()
+		handler.HandlerLoop(myPartyId, h, comm)
+		log.Info().Msgf("Keysign takes %s", time.Since(s))
+
+		signResult, err := h.Result()
+		if err != nil {
+			panic(err)
+		}
+		signature := signResult.(*ecdsa.Signature)
+		if !signature.Verify(config.PublicPoint(), msghash) {
+			panic(err)
+		}
+		log.Info().Msgf("Keysign success (%d/%d): Signature verified!", len(partiesSlice), len(config.PartyIDs()))
+		sig, err := signature.SigEthereum()
+		if err != nil {
+			panic(err)
+		}
+		log.Info().Msgf("Signature(Ethereum)(%d): %x", len(sig), sig)
 	},
 }
 
