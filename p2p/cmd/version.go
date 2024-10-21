@@ -13,6 +13,7 @@ var (
 	Version   string
 	Commit    string
 	BuildTime string
+	Branch    string
 )
 
 // versionCmd represents the version command
@@ -24,6 +25,7 @@ var versionCmd = &cobra.Command{
 		fmt.Printf("%s\n", Version)
 		fmt.Printf("%s\n", Commit)
 		fmt.Printf("%s\n", BuildTime)
+		fmt.Printf("%s\n", Branch)
 	},
 }
 
