@@ -6,19 +6,15 @@ package cmd
 import (
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/taurusgroup/multi-party-sig/p2p/encryption"
 	"github.com/taurusgroup/multi-party-sig/p2p/handler"
 	"github.com/taurusgroup/multi-party-sig/p2p/utils"
 	"github.com/taurusgroup/multi-party-sig/pkg/ecdsa"
-	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 	"github.com/taurusgroup/multi-party-sig/pkg/party"
 	"github.com/taurusgroup/multi-party-sig/pkg/pool"
 	"github.com/taurusgroup/multi-party-sig/pkg/protocol"
@@ -42,40 +38,7 @@ var keysignCmd = &cobra.Command{
 		}
 
 		// read keygen config
-		if cfgDir == "" {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				panic(err)
-			}
-			cfgDir = path.Join(homeDir, ".p2p")
-		}
-		vaultDir := path.Join(cfgDir, vault)
-		log.Info().Msgf("describe %s", vaultDir)
-		configPath := path.Join(vaultDir, "keygen_config.json")
-		// read file
-		rawdata, err := os.ReadFile(configPath)
-		if err != nil {
-			panic(err)
-		}
-		log.Debug().Msgf("File size %d", len(rawdata))
-		if password == "" {
-			log.Info().Msgf("No password via CLI arguments; reading from stdin...")
-			pw, err := utils.GetPassword("Enter password: ")
-			if err != nil {
-				panic(err)
-			}
-			password = pw
-		}
-		data, err := encryption.Decrypt(rawdata, []byte(password))
-		if err != nil {
-			panic(err)
-		}
-
-		config := cmp.EmptyConfig(curve.Secp256k1{})
-		err = config.UnmarshalBinary(data)
-		if err != nil {
-			panic(err)
-		}
+		config, vaultDir := readConfig()
 		log.Info().Msgf("N %d, threshold %d", len(config.PartyIDs()), config.Threshold)
 
 		privKey, err := utils.LoadOrCreateIdentity(vaultDir)
