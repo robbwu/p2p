@@ -229,8 +229,6 @@ func MustConnectWithEnoughPeers(host host.Host, numPeers int, whitelist []peer.I
 			}
 			conns := host.Network().ConnsToPeer(peer.ID)
 			for _, conn := range conns {
-				//spew.Dump("local multiaddr", conn.LocalMultiaddr())
-				//spew.Dump("remote multiaddr", conn.RemoteMultiaddr())
 				log.Info().Msgf("connection security %v", conn.ConnState())
 			}
 
