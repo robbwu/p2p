@@ -4,9 +4,14 @@ Copyright © 2024 brewmaster012
 package cmd
 
 import (
+	"context"
 	"os"
 	"path"
+	"time"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/taurusgroup/multi-party-sig/p2p/encryption"
@@ -14,6 +19,8 @@ import (
 	"github.com/taurusgroup/multi-party-sig/pkg/math/curve"
 	"github.com/taurusgroup/multi-party-sig/protocols/cmp"
 )
+
+var rpcUrl string
 
 // ethereumCmd represents the ethereum command
 var ethereumCmd = &cobra.Command{
@@ -28,6 +35,33 @@ var ethereumCmd = &cobra.Command{
 
 		ethAddr := UncompressedToEthAddr(PointToPubkeyUncompressed65B(config.PublicPoint()))
 		log.Info().Msgf("Ethereum address 0x%x", ethAddr)
+
+		client, err := ethclient.Dial(rpcUrl)
+		if err != nil {
+			panic(err)
+		}
+		block, err := client.BlockByNumber(context.Background(), nil)
+		t := time.Unix(int64(block.Time()), 0)
+		log.Info().Msgf("Latest block number %d; timestamp %s", block.Number(), t.String())
+
+		from := ethcommon.BytesToAddress(ethAddr)
+		bal, err := client.BalanceAt(context.Background(), from, nil)
+		if err != nil {
+			panic(err)
+		}
+		balF, _ := bal.Float64()
+		log.Info().Msgf("Balance of %s is %.6f", from.Hex(), balF/params.Ether)
+		nonce, err := client.NonceAt(context.Background(), from, nil)
+		if err != nil {
+			panic(err)
+		}
+		log.Info().Msgf("Nonce of %s is %d", from.Hex(), nonce)
+		gasPrice, err := client.SuggestGasPrice(context.Background())
+		if err != nil {
+			panic(err)
+		}
+		gasPriceF, _ := gasPrice.Float64()
+		log.Info().Msgf("Suggested gas price is %.6fgwei", gasPriceF/1.0e9)
 	},
 }
 
@@ -81,4 +115,6 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// ethereumCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+
+	ethereumCmd.Flags().StringVar(&rpcUrl, "rpc", "wss://ethereum-rpc.publicnode.com", "Ethereum JSON RPC endpoint;")
 }
