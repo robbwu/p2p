@@ -1,6 +1,5 @@
 /*
 Copyright © 2024 brewmaster012
-
 */
 package cmd
 
@@ -10,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var password string
+var words *string
 
 // dropCmd represents the drop command
 var dropCmd = &cobra.Command{
@@ -28,6 +27,17 @@ into a file.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("drop called")
+		fmt.Printf("recv flags? %s\n", *words)
+		if words == nil { // drop send mode
+			// step 1: generate 4 random words from the bip wordlist
+
+			// step 2: derive a session id and connect to p2p peer
+			// step 3: encrypt and communicate ciphertext
+		} else { // recv mode
+			// step 1: from the 4 words derive the session id
+			// step 2: connect to the peer
+			// step 3: receive and decrypt the message
+		}
 	},
 }
 
@@ -43,5 +53,5 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// dropCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	password := dropCmd.Flags().String("recv", "", "the 4 words password")
+	words = dropCmd.Flags().String("recv", "", "the 4 words password")
 }
