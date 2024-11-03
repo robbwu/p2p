@@ -108,7 +108,7 @@ func (comm *Comm) commStreamHandler(inStream network.Stream) {
 	}
 	msg := &protocol.Message{}
 	log.Debug().Msgf("raw recv msg(%d)", len(buf))
-	msg.UnmarshalBinary(buf)
+	err = msg.UnmarshalBinary(buf)
 	if err != nil {
 		log.Error().Msgf("failed to unmarshal message: %v", err)
 		return
