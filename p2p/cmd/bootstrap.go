@@ -24,7 +24,7 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("bootstrap called")
-		ip := "100.88.27.113"
+		ip := "100.71.167.102"
 		port := "8686"
 		addr := fmt.Sprintf("/ip4/%s/tcp/%s", ip, port)
 

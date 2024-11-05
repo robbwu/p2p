@@ -40,6 +40,12 @@ into a file.
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("drop called")
 		fmt.Printf("recv flags? %s\n", *words)
+		peerInfoStr := "/ip4/100.71.167.102/tcp/8686/p2p/12D3KooWSQ2KcpDNiiknbNGwQR5zAFnk42x8baRXmyNNRZhY5vPD"
+		peerInfo, err := peer.AddrInfoFromString(peerInfoStr)
+		if err != nil {
+			fmt.Println("Error parsing peer info:", err)
+			return
+		}
 		if *words == "" { // drop send mode
 			fmt.Println("send mode")
 			// step 1: generate 4 random words from the bip wordlist
@@ -101,6 +107,13 @@ into a file.
 					fmt.Println("OK: Connected to bootstrap node:", addr)
 				}
 			}
+			// connect to custom bootstrap node
+
+			if err := host.Connect(context.Background(), *peerInfo); err != nil {
+				fmt.Println("Error connecting to custom bootstrap node:", err)
+				// return
+			}
+
 			routingDiscovery := routing.NewRoutingDiscovery(kdht)
 			// Advertise the session ID
 			dutil.Advertise(context.Background(), routingDiscovery, sessionID)
@@ -108,8 +121,11 @@ into a file.
 			done := make(chan struct{})
 			streamHandler := func(s network.Stream) {
 				defer func() {
-					s.Close()
-					done <- struct{}{}
+					err = s.Close()
+					if err != nil {
+						fmt.Println("Error closing stream:", err)
+					}
+					// done <- struct{}{}
 				}()
 				fmt.Println("Got a new stream!")
 				fmt.Println("From peer:", s.Conn().RemotePeer())
@@ -157,16 +173,24 @@ into a file.
 					fmt.Println("OK: Connected to bootstrap node:", addr)
 				}
 			}
+			// connect to custom bootstrap node
+
+			if err := host.Connect(context.Background(), *peerInfo); err != nil {
+				fmt.Println("Error connecting to custom bootstrap node:", err)
+				// return
+			}
+			fmt.Println("connected to custom bootstrap node")
 			routingDiscovery := routing.NewRoutingDiscovery(kdht)
 			// Find the peer with the session ID
-			peerChan, err := routingDiscovery.FindPeers(context.Background(), sessionID)
-			if err != nil {
-				fmt.Println("Error finding peer:", err)
-				return
-			}
+
 			found := false
 			var dropSenderPeerID peer.ID
 			for range time.NewTicker(5 * time.Second).C {
+				peerChan, err := routingDiscovery.FindPeers(context.Background(), sessionID)
+				if err != nil {
+					fmt.Println("Error finding peer:", err)
+					return
+				}
 				fmt.Println("One tick querying peer info redenzvous...")
 				if found {
 					fmt.Println("found peer; exit loop")
