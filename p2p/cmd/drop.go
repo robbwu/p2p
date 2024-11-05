@@ -17,6 +17,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/taurusgroup/multi-party-sig/p2p/encryption"
 )
@@ -38,14 +40,10 @@ The received content will be to stdout; redirect to save
 into a file. 
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("drop called")
-		fmt.Printf("recv flags? %s\n", *words)
-		peerInfoStr := "/ip4/100.71.167.102/tcp/8686/p2p/12D3KooWSQ2KcpDNiiknbNGwQR5zAFnk42x8baRXmyNNRZhY5vPD"
-		peerInfo, err := peer.AddrInfoFromString(peerInfoStr)
-		if err != nil {
-			fmt.Println("Error parsing peer info:", err)
-			return
-		}
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		log.Debug().Msg("drop called")
+		log.Debug().Msgf("recv flags? %s\n", *words)
+
 		if *words == "" { // drop send mode
 			fmt.Println("send mode")
 			// step 1: generate 4 random words from the bip wordlist
@@ -107,13 +105,6 @@ into a file.
 					fmt.Println("OK: Connected to bootstrap node:", addr)
 				}
 			}
-			// connect to custom bootstrap node
-
-			if err := host.Connect(context.Background(), *peerInfo); err != nil {
-				fmt.Println("Error connecting to custom bootstrap node:", err)
-				// return
-			}
-
 			routingDiscovery := routing.NewRoutingDiscovery(kdht)
 			// Advertise the session ID
 			dutil.Advertise(context.Background(), routingDiscovery, sessionID)
@@ -147,110 +138,103 @@ into a file.
 			<-done
 			fmt.Printf("Exiting drop\n")
 		} else { // recv mode
-			fmt.Println("recv mode")
+
+			log.Debug().Msg("recv mode")
 			// step 1: from the 4 words derive the session id
 			words := strings.Split(*words, "-")
 			sessionID := SessionIDFromWords(words)
-			fmt.Printf("session id: %s\n", sessionID)
+			log.Info().Str("session_id", sessionID).Msg("session id")
 
 			// step 2: connect to the peer
 			host, err := libp2p.New()
 			if err != nil {
-				fmt.Println("Error creating host:", err)
+				log.Error().Err(err).Msg("Error creating host")
 				return
 			}
-			fmt.Printf("host id: %s\n", host.ID())
+			log.Info().Str("host_id", host.ID().String()).Msg("host id")
 			kdht, err := dht.New(context.Background(), host, dht.Mode(dht.ModeClient))
 			if err = kdht.Bootstrap(context.Background()); err != nil {
-				fmt.Println("Error bootstrapping DHT:", err)
+				log.Error().Err(err).Msg("Error bootstrapping DHT")
 				return
 			}
 			for _, addr := range dht.DefaultBootstrapPeers {
 				peerinfo, _ := peer.AddrInfoFromP2pAddr(addr)
 				if err := host.Connect(context.Background(), *peerinfo); err != nil {
-					fmt.Println("Error: connecting to bootstrap node:", err)
+					log.Error().Err(err).Msg("Error connecting to bootstrap node")
 				} else {
-					fmt.Println("OK: Connected to bootstrap node:", addr)
+					log.Info().Str("bootstrap_node", addr.String()).Msg("connected to bootstrap node")
 				}
 			}
-			// connect to custom bootstrap node
 
-			if err := host.Connect(context.Background(), *peerInfo); err != nil {
-				fmt.Println("Error connecting to custom bootstrap node:", err)
-				// return
-			}
-			fmt.Println("connected to custom bootstrap node")
 			routingDiscovery := routing.NewRoutingDiscovery(kdht)
-			// Find the peer with the session ID
 
 			found := false
 			var dropSenderPeerID peer.ID
 			for range time.NewTicker(5 * time.Second).C {
-				peerChan, err := routingDiscovery.FindPeers(context.Background(), sessionID)
-				if err != nil {
-					fmt.Println("Error finding peer:", err)
-					return
-				}
-				fmt.Println("One tick querying peer info redenzvous...")
 				if found {
-					fmt.Println("found peer; exit loop")
+					log.Debug().Msg("found peer; exit loop")
 					break
 				}
-				for peer := range peerChan {
-					func() {
-						ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-						defer cancel()
-						if err = host.Connect(ctx, peer); err != nil {
-							fmt.Println("Error connecting to peer:", err)
-							return
-						}
-						fmt.Println("Connected to peer ID:", peer.ID)
-						fmt.Println(" at address: ", peer.Addrs)
-						found = true
-						dropSenderPeerID = peer.ID
-						fmt.Println("Found peer with session ID; making stream to request data...")
-					}()
-				}
+				func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					defer cancel()
+					peerChan, err := routingDiscovery.FindPeers(ctx, sessionID)
+					if err != nil {
+						log.Error().Err(err).Msg("Error finding peer")
+						return
+					}
+					log.Debug().Msg("One tick querying peer info redenzvous...")
+
+					for peer := range peerChan {
+						func() {
+							ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+							defer cancel()
+							if err = host.Connect(ctx, peer); err != nil {
+								log.Error().Err(err).Msg("Error connecting to peer")
+								return
+							}
+							log.Info().Str("peer_id", peer.ID.String()).Str("peer_addr", peer.Addrs[0].String()).Msg("connected to peer")
+
+							found = true
+							dropSenderPeerID = peer.ID
+							log.Info().Str("peer_id", peer.ID.String()).Msg("found peer with session ID")
+						}()
+					}
+				}()
 			}
 			// step 3: receive and decrypt the message
 			s, err := host.NewStream(context.Background(), dropSenderPeerID, "/p2p/drop")
 			if err != nil {
-				fmt.Println("Error opening stream:", err)
+				log.Error().Err(err).Msg("Error opening stream")
 				return
 			}
 			defer s.Close()
 			s.CloseWrite() // read only end
 			ciphertext, err := io.ReadAll(s)
 			if err != nil {
-				fmt.Println("Error reading ciphertext:", err)
+				log.Error().Err(err).Msg("Error reading ciphertext")
 				return
 			}
-			fmt.Printf("Received %d bytes of ciphertext\n", len(ciphertext))
-			// decrypt the ciphertext
-			ints, err := encryption.WordsToInts(words)
+			log.Info().Int("size", len(ciphertext)).Msg("Received ciphertext")
+			keyBytes, err := encryption.WordsToBytes(words)
 			if err != nil {
-				fmt.Println("Error converting words to ints:", err)
-				return
-			}
-			keyBytes, err := encryption.IntsToBytes(ints)
-			if err != nil {
-				fmt.Println("Error converting ints to bytes:", err)
+				log.Error().Err(err).Msg("Error converting ints to bytes")
 				return
 			}
 			plaintext, err := encryption.Decrypt(ciphertext, keyBytes)
 			if err != nil {
-				fmt.Println("Error decrypting ciphertext:", err)
+				log.Error().Err(err).Msg("Error decrypting ciphertext")
 				return
 			}
-			fmt.Printf("Decrypted message: len %d\n", len(plaintext))
+			log.Info().Int("message_length", len(plaintext)).Msg("decrypted message")
 			// write the decrypted message to stdout
 			n, err := os.Stdout.Write(plaintext)
 			if err != nil {
-				fmt.Println("Error writing to stdout:", err)
+				log.Error().Err(err).Msg("Error writing to stdout")
 				return
 			}
-			fmt.Printf("Wrote %d bytes to stdout\n", n)
-			fmt.Printf("Exiting drop\n")
+			log.Info().Int("size", n).Msg("Wrote to stdout")
+			log.Info().Msg("Exiting drop")
 		}
 	},
 }
