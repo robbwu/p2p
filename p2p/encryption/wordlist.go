@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-var WordToIndex map[string]int16
+var WordToIndex = make(map[string]int16)
 
 func init() {
 	// Ensure word list is correct
