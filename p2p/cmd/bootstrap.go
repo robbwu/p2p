@@ -47,7 +47,8 @@ to quickly create a Cobra application.`,
 			fmt.Println("Bootstrap Error: ", err)
 			return
 		}
-
+		fmt.Println("Bootstrap done")
+		select {}
 	},
 }
 
